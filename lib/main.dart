@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dynamsoft_barcode_reader_bundle_flutter/dynamsoft_barcode_reader_bundle_flutter.dart';
+import 'package:dynamsoft_capture_vision_flutter/dynamsoft_capture_vision_flutter.dart';
 
 void main() {
   runApp(const MyApp());
@@ -53,77 +53,368 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  String _displayString = ""; // used to show the barcode result
+  int _selectedIndex = 0;
 
-
-  void _launchBarcodeScanner(EnumScanningMode scanningMode) async {
-    var config = BarcodeScannerConfig(license: "t0090pwAAAGxGt/RhoGa20B78dlyM00z2OGRHiOHHk7EQ1ITiT4awYtHZQaiE2UrN7Hc9aVhHXy3zHYLRm+GIQ0Jx9quWGhiDb/WVPmAsb/Ft3vgrq6i56QloIyKQ", scanningMode: scanningMode);
-    BarcodeScanResult barcodeScanResult = await BarcodeScanner.launch(config);
-
+  void _onItemTapped(int index) {
     setState(() {
-      if (barcodeScanResult.status == EnumResultStatus.canceled) {
-        _displayString = "Scan canceled";
-      } else if (barcodeScanResult.status == EnumResultStatus.exception) {
-        _displayString = "ErrorCode: ${barcodeScanResult.errorCode}\n\nErrorString: ${barcodeScanResult.errorMessage}";
-      } else {
-        //EnumResultStatus.finished
-        if (scanningMode == EnumScanningMode.single) {
-          var barcode = barcodeScanResult.barcodes![0];
-          _displayString = "Format: ${barcode!.formatString}\nText: ${barcode.text}";
-        } else {
-          // EnumScanningMode.multiple
-          _displayString =
-              "Barcodes count: ${barcodeScanResult.barcodes!.length}\n\n"
-              "${barcodeScanResult.barcodes!.map((barcode) {
-                return "Format: ${barcode!.formatString}\nText: ${barcode.text}";
-              }).join("\n\n")}";
-        }
-      }
+      _selectedIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('Result:'),
-            Text(
-              _displayString,
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: const [
+          ScannerPage(),
+          HistoryPage(),
+          MyCodesPage(),
+          SettingsPage(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        selectedItemColor: const Color(0xFF5B6FBF),
+        unselectedItemColor: Colors.grey,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.qr_code_scanner),
+            label: 'Scanner',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'History',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view),
+            label: 'My Codes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Scanner Page
+class ScannerPage extends StatefulWidget {
+  const ScannerPage({super.key});
+
+  @override
+  State<ScannerPage> createState() => _ScannerPageState();
+}
+
+class _ScannerPageState extends State<ScannerPage> {
+  CaptureVisionRouter? _cvr;
+  CameraEnhancer? _camera;
+  CapturedResultReceiver? _receiver;
+  String _displayString = "";
+  bool _isScanning = false;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSdk();
+  }
+
+  void _initSdk() async {
+    try {
+      // Initialize license
+      await LicenseManager.initLicense(
+        "t0090pwAAAGxGt/RhoGa20B78dlyM00z2OGRHiOHHk7EQ1ITiT4awYtHZQaiE2UrN7Hc9aVhHXy3zHYLRm+GIQ0Jx9quWGhiDb/WVPmAsb/Ft3vgrq6i56QloIyKQ",
+      );
+
+      // Get instances
+      _cvr = CaptureVisionRouter.instance;
+      _camera = CameraEnhancer.instance;
+
+      // Set up the camera as input
+      _cvr!.setInput(_camera!);
+
+      // Set up result receiver
+      _receiver = CapturedResultReceiver()
+        ..onDecodedBarcodesReceived = (DecodedBarcodesResult result) async {
+          if (result.items?.isNotEmpty ?? false) {
+            var barcode = result.items![0];
+            if (mounted) {
+              setState(() {
+                _displayString = "Format: ${barcode.formatString}\nText: ${barcode.text}";
+              });
+              _stopScanning();
+            }
+          }
+        };
+
+      // Add result receiver
+      _cvr!.addResultReceiver(_receiver!);
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _displayString = "Initialization error: $e";
+        });
+      }
+    }
+  }
+
+  void _startScanning() async {
+    if (_isScanning || !_isInitialized || _camera == null || _cvr == null) return;
+
+    try {
+      setState(() {
+        _isScanning = true;
+        _displayString = "";
+      });
+
+      // Open camera
+      await _camera!.open();
+
+      // Start capturing with preset template
+      await _cvr!.startCapturing(EnumPresetTemplate.readBarcodes);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _displayString = "Error starting camera: $e";
+          _isScanning = false;
+        });
+      }
+    }
+  }
+
+  void _stopScanning() async {
+    if (!_isScanning || _cvr == null || _camera == null) return;
+
+    try {
+      await _cvr!.stopCapturing();
+      await _camera!.close();
+
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_isScanning) {
+      _stopScanning();
+    }
+    if (_cvr != null && _receiver != null) {
+      _cvr!.removeResultReceiver(_receiver!);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: Stack(
+        children: [
+          // Full screen area above bottom navigation
+          if (_isScanning && _camera != null)
+            // Camera view when scanning
+            Positioned.fill(
+              child: CameraView(cameraEnhancer: _camera!),
+            )
+          else
+            // Play button and results when not scanning
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFFFFFFFF),
+                      Color(0xFFF8F9FC),
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: _isInitialized
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_displayString.isNotEmpty) ...[
+                              const Text(
+                                'Result:',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                child: Text(
+                                  _displayString,
+                                  style: const TextStyle(fontSize: 16),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 40),
+                            ],
+                            InkWell(
+                              onTap: _startScanning,
+                              borderRadius: BorderRadius.circular(50),
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [Color(0xFF5B6FBF), Color(0xFF4A5FAE)],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF5B6FBF).withValues(alpha: 0.4),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.play_arrow,
+                                  color: Colors.white,
+                                  size: 56,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              'Tap to Scan',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const CircularProgressIndicator(
+                          color: Color(0xFF5B6FBF),
+                        ),
+                ),
+              ),
             ),
-          ],
+          // Stop button overlay when scanning
+          if (_isScanning)
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: InkWell(
+                  onTap: _stopScanning,
+                  borderRadius: BorderRadius.circular(50),
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFFE57373), Color(0xFFD32F2F)],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFE57373).withValues(alpha: 0.6),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.stop,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// History Page
+class HistoryPage extends StatelessWidget {
+  const HistoryPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFF5F7FA),
+      body: Center(
+        child: Text(
+          'History',
+          style: TextStyle(fontSize: 24),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _launchBarcodeScanner(EnumScanningMode.single),
-        tooltip: 'Scan Barcodes',
-        child: const Icon(Icons.qr_code_scanner),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-          
+    );
+  }
+}
+
+// My Codes Page
+class MyCodesPage extends StatelessWidget {
+  const MyCodesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFF5F7FA),
+      body: Center(
+        child: Text(
+          'My Codes',
+          style: TextStyle(fontSize: 24),
+        ),
+      ),
+    );
+  }
+}
+
+// Settings Page
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFF5F7FA),
+      body: Center(
+        child: Text(
+          'Settings',
+          style: TextStyle(fontSize: 24),
+        ),
+      ),
     );
   }
 }
