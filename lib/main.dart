@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dynamsoft_barcode_reader_bundle_flutter/dynamsoft_barcode_reader_bundle_flutter.dart';
 
 void main() {
   runApp(const MyApp());
@@ -30,13 +31,13 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({super.key});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -47,23 +48,37 @@ class MyHomePage extends StatefulWidget {
   // used by the build method of the State. Fields in a Widget subclass are
   // always marked "final".
 
-  final String title;
-
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  String _displayString = ""; // used to show the barcode result
 
-  void _incrementCounter() {
+
+  void _launchBarcodeScanner(EnumScanningMode scanningMode) async {
+    var config = BarcodeScannerConfig(license: "t0090pwAAAGxGt/RhoGa20B78dlyM00z2OGRHiOHHk7EQ1ITiT4awYtHZQaiE2UrN7Hc9aVhHXy3zHYLRm+GIQ0Jx9quWGhiDb/WVPmAsb/Ft3vgrq6i56QloIyKQ", scanningMode: scanningMode);
+    BarcodeScanResult barcodeScanResult = await BarcodeScanner.launch(config);
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      if (barcodeScanResult.status == EnumResultStatus.canceled) {
+        _displayString = "Scan canceled";
+      } else if (barcodeScanResult.status == EnumResultStatus.exception) {
+        _displayString = "ErrorCode: ${barcodeScanResult.errorCode}\n\nErrorString: ${barcodeScanResult.errorMessage}";
+      } else {
+        //EnumResultStatus.finished
+        if (scanningMode == EnumScanningMode.single) {
+          var barcode = barcodeScanResult.barcodes![0];
+          _displayString = "Format: ${barcode!.formatString}\nText: ${barcode.text}";
+        } else {
+          // EnumScanningMode.multiple
+          _displayString =
+              "Barcodes count: ${barcodeScanResult.barcodes!.length}\n\n"
+              "${barcodeScanResult.barcodes!.map((barcode) {
+                return "Format: ${barcode!.formatString}\nText: ${barcode.text}";
+              }).join("\n\n")}";
+        }
+      }
     });
   }
 
@@ -76,15 +91,6 @@ class _MyHomePageState extends State<MyHomePage> {
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
@@ -104,19 +110,20 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Text('You have pushed the button this many times:'),
+            const Text('Result:'),
             Text(
-              '$_counter',
+              _displayString,
               style: Theme.of(context).textTheme.headlineMedium,
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+        onPressed: () => _launchBarcodeScanner(EnumScanningMode.single),
+        tooltip: 'Scan Barcodes',
+        child: const Icon(Icons.qr_code_scanner),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+          
     );
   }
 }

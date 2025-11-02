@@ -49,6 +49,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
+  dynamsoft_barcode_reader_bundle_flutter:
+    dependency: "direct main"
+    description:
+      name: dynamsoft_barcode_reader_bundle_flutter
+      sha256: bad762ea1002377ae1210de4ff9aad9edb5bd542bad43edd4fcea0e1209f9b3e
+      url: "https://pub.dev"
+    source: hosted
+    version: "11.0.5201"
+  dynamsoft_capture_vision_flutter:
+    dependency: "direct main"
+    description:
+      name: dynamsoft_capture_vision_flutter
+      sha256: "93658c05e3bceea15d5e77434aeeb1544c53baaa660ddb6c9e5c1bfc321984b8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.5200"
   fake_async:
     dependency: transitive
     description:
@@ -139,6 +155,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.1"
+  plugin_platform_interface:
+    dependency: transitive
+    description:
+      name: plugin_platform_interface
+      sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.8"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -210,4 +234,4 @@ packages:
     version: "15.0.2"
 sdks:
   dart: ">=3.9.2 <4.0.0"
-  flutter: ">=3.18.0-18.0.pre.54"
+  flutter: ">=3.22.0"
