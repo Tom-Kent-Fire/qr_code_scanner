@@ -1,8 +1,85 @@
 import 'package:flutter/material.dart';
 import 'package:dynamsoft_capture_vision_flutter/dynamsoft_capture_vision_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
+}
+
+// Scan Result Model
+class ScanResult {
+  final String format;
+  final String text;
+  final DateTime timestamp;
+  final String id;
+
+  ScanResult({
+    required this.format,
+    required this.text,
+    required this.timestamp,
+    required this.id,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'format': format,
+        'text': text,
+        'timestamp': timestamp.toIso8601String(),
+        'id': id,
+      };
+
+  factory ScanResult.fromJson(Map<String, dynamic> json) => ScanResult(
+        format: json['format'] as String,
+        text: json['text'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        id: json['id'] as String,
+      );
+}
+
+// Storage Manager
+class ScanHistoryManager {
+  static const String _key = 'scan_history';
+
+  static Future<List<ScanResult>> loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? historyJson = prefs.getString(_key);
+
+      if (historyJson == null) {
+        print('No history found in storage');
+        return [];
+      }
+
+      final List<dynamic> decoded = jsonDecode(historyJson);
+      return decoded.map((item) => ScanResult.fromJson(item)).toList();
+    } catch (e) {
+      print('Error loading history: $e');
+      return [];
+    }
+  }
+
+  static Future<void> saveResult(ScanResult result) async {
+    try {
+      final history = await loadHistory();
+      history.insert(0, result); // Add to beginning
+      await _saveHistory(history);
+      print('History saved successfully, total items: ${history.length}');
+    } catch (e) {
+      print('Error saving result: $e');
+    }
+  }
+
+  static Future<void> deleteResults(List<String> ids) async {
+    final history = await loadHistory();
+    history.removeWhere((result) => ids.contains(result.id));
+    await _saveHistory(history);
+  }
+
+  static Future<void> _saveHistory(List<ScanResult> history) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encoded = jsonEncode(history.map((r) => r.toJson()).toList());
+    await prefs.setString(_key, encoded);
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -54,11 +131,17 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
+  final GlobalKey<_HistoryPageState> _historyKey = GlobalKey();
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+
+    // Reload history when switching to History tab
+    if (index == 1) {
+      _historyKey.currentState?._loadHistory();
+    }
   }
 
   @override
@@ -66,11 +149,11 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
-        children: const [
-          ScannerPage(),
-          HistoryPage(),
-          MyCodesPage(),
-          SettingsPage(),
+        children: [
+          const ScannerPage(),
+          HistoryPage(key: _historyKey),
+          const MyCodesPage(),
+          const SettingsPage(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -145,6 +228,17 @@ class _ScannerPageState extends State<ScannerPage> {
         ..onDecodedBarcodesReceived = (DecodedBarcodesResult result) async {
           if (result.items?.isNotEmpty ?? false) {
             var barcode = result.items![0];
+
+            // Save to history
+            final scanResult = ScanResult(
+              format: barcode.formatString,
+              text: barcode.text,
+              timestamp: DateTime.now(),
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+            );
+            await ScanHistoryManager.saveResult(scanResult);
+            print('Saved scan result: ${scanResult.text}');
+
             if (mounted) {
               setState(() {
                 _displayString = "Format: ${barcode.formatString}\nText: ${barcode.text}";
@@ -166,6 +260,7 @@ class _ScannerPageState extends State<ScannerPage> {
       if (mounted) {
         setState(() {
           _displayString = "Initialization error: $e";
+          _isInitialized = true; // Show UI even if init fails
         });
       }
     }
@@ -230,7 +325,7 @@ class _ScannerPageState extends State<ScannerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
           // Full screen area above bottom navigation
@@ -366,17 +461,197 @@ class _ScannerPageState extends State<ScannerPage> {
 }
 
 // History Page
-class HistoryPage extends StatelessWidget {
+class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
 
   @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  List<ScanResult> _history = [];
+  Set<String> _selectedIds = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _isLoading = true);
+    final history = await ScanHistoryManager.loadHistory();
+    print('Loaded ${history.length} items from history');
+    if (mounted) {
+      setState(() {
+        _history = history;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+
+    await ScanHistoryManager.deleteResults(_selectedIds.toList());
+    setState(() => _selectedIds.clear());
+    await _loadHistory();
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFF5F7FA),
-      body: Center(
-        child: Text(
-          'History',
-          style: TextStyle(fontSize: 24),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _selectedIds.isNotEmpty
+          ? AppBar(
+              backgroundColor: const Color(0xFF5B6FBF),
+              leading: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => setState(() => _selectedIds.clear()),
+              ),
+              title: Text(
+                '${_selectedIds.length} selected',
+                style: const TextStyle(color: Colors.white),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  onPressed: _deleteSelected,
+                ),
+              ],
+            )
+          : null,
+      body: SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFAFBFC),
+                Color(0xFFF0F2F5),
+              ],
+            ),
+          ),
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF5B6FBF),
+                  ),
+                )
+              : _history.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.history,
+                            size: 80,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No scan history',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      itemCount: _history.length,
+                      itemBuilder: (context, index) {
+                    final item = _history[index];
+                    final isSelected = _selectedIds.contains(item.id);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: isSelected ? 4 : 1,
+                      color: isSelected
+                          ? const Color(0xFFE3F2FD)
+                          : Colors.white,
+                      child: InkWell(
+                        onTap: () => _toggleSelection(item.id),
+                        onLongPress: () => _toggleSelection(item.id),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              if (isSelected)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 12),
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    color: Color(0xFF5B6FBF),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.text,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.format,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _formatTimestamp(item.timestamp),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ),
     );

@@ -9,11 +9,15 @@ PODS:
     - DynamsoftCaptureVisionBundle (= 3.2.1000)
   - DynamsoftCaptureVisionBundle (3.2.1000)
   - Flutter (1.0.0)
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
 
 DEPENDENCIES:
   - dynamsoft_barcode_reader_bundle_flutter (from `.symlinks/plugins/dynamsoft_barcode_reader_bundle_flutter/ios`)
   - dynamsoft_capture_vision_flutter (from `.symlinks/plugins/dynamsoft_capture_vision_flutter/ios`)
   - Flutter (from `Flutter`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -27,6 +31,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/dynamsoft_capture_vision_flutter/ios"
   Flutter:
     :path: Flutter
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
 
 SPEC CHECKSUMS:
   dynamsoft_barcode_reader_bundle_flutter: 2dc05d0111c99f735a793608eee7985854e308cb
@@ -34,6 +40,7 @@ SPEC CHECKSUMS:
   DynamsoftBarcodeReaderBundle: 9b6d7afce2219e7359450b511e6436ea1c0b00ec
   DynamsoftCaptureVisionBundle: 1b8bbe51747cdea4cb2fceb4587fdd0646bd7cd9
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
 
 PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
 

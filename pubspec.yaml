@@ -37,6 +37,7 @@ dependencies:
   dynamsoft_capture_vision_flutter: ^3.0.5200
 
   dynamsoft_barcode_reader_bundle_flutter: ^11.0.5200
+  shared_preferences: ^2.5.3
   
 dev_dependencies:
   flutter_test:
